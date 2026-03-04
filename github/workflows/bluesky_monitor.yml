@@ -1,0 +1,47 @@
+name: F1 BlueSky to Telegram
+
+on:
+  # Runs every 30 minutes
+  schedule:
+    - cron: '*/30 * * * *'
+
+  # Allows you to manually trigger from GitHub's Actions tab
+  workflow_dispatch:
+
+# Give the workflow permission to push state changes back to the repo
+permissions:
+  contents: write
+
+jobs:
+  fetch-and-post:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run the bot
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
+          LOOKBACK_HOURS: ${{ vars.LOOKBACK_HOURS || '2' }}
+          MAX_POSTS_PER_RUN: ${{ vars.MAX_POSTS_PER_RUN || '10' }}
+          ENABLE_KEYWORD_SEARCH: ${{ vars.ENABLE_KEYWORD_SEARCH || 'false' }}
+          EXTRA_BSKY_ACCOUNTS: ${{ vars.EXTRA_BSKY_ACCOUNTS || '' }}
+        run: python bot.py
+
+      - name: Commit updated state
+        run: |
+          git config user.name "F1 Bot"
+          git config user.email "bot@github-actions"
+          git add state/
+          git diff --staged --quiet || git commit -m "Update sent posts state [skip ci]"
+          git push
