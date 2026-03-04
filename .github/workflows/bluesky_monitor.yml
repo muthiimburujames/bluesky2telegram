@@ -1,6 +1,6 @@
 name: F1 BlueSky to Telegram
 
-on:
+"on":
   # Runs every 30 minutes
   schedule:
     - cron: '*/30 * * * *'
