@@ -40,15 +40,19 @@ STATE_FILE = Path(__file__).parent / "state" / "sent_posts.json"
 
 F1_ACCOUNTS = [
     # ── Official ──
-    "f1docs.bsky.social",                  # Official F1 Documents
+    "f1.bsky.social",                  # Official F1
     # ── Journalists ──
     "chrismedlandf1.bsky.social",      # Chris Medland
-    "albertfabrega.bsky.social",       # Albert Fabrega
-    "f1subreddit.bsky.social",         # F1 Subreddit
-    "scarbstech.bsky.social",          # Scarbs Tech
-    "thomasmaheronf1.bsky.social",     # Thomas Maher
-    "jeppe.bsky.social",               # Jeppe Olsen
-    "andrewbensonf1.bsky.social",      # Andrew Benson
+    "willbuxton.bsky.social",          # Will Buxton
+    "laurenceedmondson.bsky.social",   # Laurence Edmondson (ESPN)
+    "lukesmithf1.bsky.social",         # Luke Smith
+    # ── Media outlets ──
+    "motorsport.bsky.social",          # Motorsport.com
+    "the-race.bsky.social",            # The Race
+    "planetf1.bsky.social",            # PlanetF1
+    "autosport.bsky.social",           # Autosport
+    "racefans.bsky.social",            # RaceFans
+    "racingnews365.bsky.social",       # RacingNews365
 ]
 
 # Optional: add your own custom accounts via environment variable
@@ -229,34 +233,54 @@ def parse_post(feed_item: dict) -> dict | None:
 #  Telegram posting
 # ──────────────────────────────────────────────────────────────
 
-def format_telegram_message(post: dict) -> str:
-    """Format a BlueSky post into a nice Telegram message."""
-    lines = []
+def format_telegram_message(post: dict, as_caption: bool = False) -> str:
+    """Format a BlueSky post into a clean Telegram message.
 
-    # Header with author
-    lines.append(f"🏎 <b>{escape_html(post['display_name'])}</b>")
-    lines.append(f"<i>@{escape_html(post['handle'])}</i>")
-    lines.append("")
+    Layout:
+      [post text]
+
+      @handle
+      Source: BlueSky
+
+    If as_caption is True, keeps it under 1024 chars (Telegram caption limit).
+    """
+    max_len = 1024 if as_caption else 4096
+    lines = []
 
     # Post text
     lines.append(escape_html(post["text"]))
 
-    # External link card (if present)
+    # External link (if present, add it after the text)
     if post["external_url"]:
         lines.append("")
         if post["external_title"]:
-            lines.append(f'🔗 <a href="{post["external_url"]}">{escape_html(post["external_title"])}</a>')
+            lines.append(f'<a href="{post["external_url"]}">{escape_html(post["external_title"])}</a>')
         else:
-            lines.append(f'🔗 <a href="{post["external_url"]}">Link</a>')
+            lines.append(f'<a href="{post["external_url"]}">Link</a>')
 
-    # BlueSky source link
+    # Author handle
     if post["bsky_link"]:
         lines.append("")
-        lines.append(f'<a href="{post["bsky_link"]}">View on BlueSky</a>')
+        lines.append(f'<a href="{post["bsky_link"]}">@{escape_html(post["handle"])}</a>')
+    else:
+        lines.append("")
+        lines.append(f"@{escape_html(post['handle'])}")
 
-    lines.append("\n#F1 #BlueSky")
+    # Source
+    lines.append("Source: BlueSky")
 
-    return "\n".join(lines)
+    message = "\n".join(lines)
+
+    # Trim if over the limit
+    if len(message) > max_len:
+        # Rebuild with truncated post text
+        suffix_lines = lines[1:]  # everything after the post text
+        suffix = "\n".join(suffix_lines)
+        available = max_len - len(suffix) - 10  # leave room for "..."
+        truncated_text = escape_html(post["text"])[:available] + "..."
+        message = truncated_text + "\n" + suffix
+
+    return message
 
 
 def escape_html(text: str) -> str:
@@ -270,7 +294,11 @@ def escape_html(text: str) -> str:
 
 
 def send_telegram_message(text: str, photo_url: str = "") -> bool:
-    """Send a message (with optional photo) to the Telegram channel."""
+    """Send a message (with optional photo) to the Telegram channel.
+
+    When a photo is provided, it's sent as a photo message with the text
+    as caption (image appears first, text below).
+    """
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHANNEL_ID:
         print("  ❌ Telegram credentials not set!")
         return False
@@ -279,16 +307,14 @@ def send_telegram_message(text: str, photo_url: str = "") -> bool:
 
     try:
         if photo_url:
-            # Send as photo with caption
-            caption = text[:1024]  # Telegram caption limit
+            # Send as photo — image displays first, caption below
             resp = requests.post(
                 f"{base_url}/sendPhoto",
                 json={
                     "chat_id": TELEGRAM_CHANNEL_ID,
                     "photo": photo_url,
-                    "caption": caption,
+                    "caption": text,
                     "parse_mode": "HTML",
-                    "disable_web_page_preview": False,
                 },
                 timeout=30,
             )
@@ -427,32 +453,29 @@ def main():
     for post in new_posts:
         print(f"\n  📤 Sending: @{post['handle']} — {post['text'][:60]}...")
 
-        message = format_telegram_message(post)
-
-        # Try to send with image if available
+        # Pick the best available image
         photo = ""
         if post["images"]:
             photo = post["images"][0]
         elif post["external_thumb"]:
             photo = post["external_thumb"]
 
+        # Format message (shorter for photo captions, full for text-only)
+        message = format_telegram_message(post, as_caption=bool(photo))
+
         success = send_telegram_message(message, photo_url=photo)
+
+        if not success and photo:
+            # If photo send fails, retry as text-only message
+            print("     ⚠ Retrying without photo...")
+            message = format_telegram_message(post, as_caption=False)
+            success = send_telegram_message(message)
 
         if success:
             sent_count += 1
             pid = post_id_hash(post["uri"])
             state["sent_ids"].append(pid)
             print("     ✅ Sent!")
-        else:
-            # If photo send fails, retry without photo
-            if photo:
-                print("     ⚠ Retrying without photo...")
-                success = send_telegram_message(message)
-                if success:
-                    sent_count += 1
-                    pid = post_id_hash(post["uri"])
-                    state["sent_ids"].append(pid)
-                    print("     ✅ Sent (text only)!")
 
         # Respect Telegram rate limits (20 msgs/min to same chat)
         time.sleep(3)
