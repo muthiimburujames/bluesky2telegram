@@ -40,19 +40,16 @@ STATE_FILE = Path(__file__).parent / "state" / "sent_posts.json"
 
 F1_ACCOUNTS = [
     # ── Official ──
-    "f1.bsky.social",                  # Official F1
+    "f1docs.bsky.social",                  # Official F1 Documents
     # ── Journalists ──
     "chrismedlandf1.bsky.social",      # Chris Medland
-    "willbuxton.bsky.social",          # Will Buxton
-    "laurenceedmondson.bsky.social",   # Laurence Edmondson (ESPN)
-    "lukesmithf1.bsky.social",         # Luke Smith
-    # ── Media outlets ──
-    "motorsport.bsky.social",          # Motorsport.com
-    "the-race.bsky.social",            # The Race
-    "planetf1.bsky.social",            # PlanetF1
-    "autosport.bsky.social",           # Autosport
-    "racefans.bsky.social",            # RaceFans
-    "racingnews365.bsky.social",       # RacingNews365
+    "albertfabrega.bsky.social",          # Abert Fabrega
+    "jeppe.bsky.social",   # Jeppe Olsen
+    "f1subreddit.bsky.social",         # F1 Subreddit
+    "scarbstech.bsky.social",         # Scarbs Tech
+    "thomasmaheronf1.bsky.social",     # Thomas Maher
+    "andrewbensonf1.bsky.social",        # Andrew Benson
+    "fdataanalysis.bsky.social",         # F1 Data Analysis
 ]
 
 # Optional: add your own custom accounts via environment variable
