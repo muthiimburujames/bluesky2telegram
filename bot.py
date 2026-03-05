@@ -39,7 +39,7 @@ STATE_FILE = Path(__file__).parent / "state" / "sent_posts.json"
 # ──────────────────────────────────────────────────────────────
 
 F1_ACCOUNTS = [
-     # ── Official ──
+    # ── Official ──
     "f1docs.bsky.social",                  # Official F1 Documents
     # ── Journalists ──
     "chrismedlandf1.bsky.social",      # Chris Medland
@@ -125,7 +125,7 @@ def get_author_feed(did: str, limit: int = 30) -> list[dict]:
     try:
         resp = requests.get(
             f"{BSKY_PUBLIC_API}/xrpc/app.bsky.feed.getAuthorFeed",
-            params={"actor": did, "limit": limit, "filter": "posts_no_replies"},
+            params={"actor": did, "limit": limit, "filter": "posts_and_author_threads"},
             timeout=15,
         )
         if resp.status_code == 200:
@@ -181,8 +181,26 @@ def parse_post(feed_item: dict) -> dict | None:
 
     uri = post.get("uri", "")
     author = post.get("author", {})
+    author_did = author.get("did", "")
     handle = author.get("handle", "unknown")
     display_name = author.get("displayName", handle)
+
+    # Detect self-replies (author replying to their own post / thread)
+    is_self_reply = False
+    reply_info = record.get("reply", {})
+    if reply_info:
+        parent_uri = reply_info.get("parent", {}).get("uri", "")
+        # A self-reply is when the parent post belongs to the same author
+        # AT URI format: at://did:plc:xxx/app.bsky.feed.post/yyy
+        if parent_uri and author_did and parent_uri.startswith(f"at://{author_did}/"):
+            is_self_reply = True
+        elif parent_uri and not author_did:
+            # If we can't determine authorship, skip replies to be safe
+            # (avoids posting someone else's conversation)
+            return None
+        else:
+            # This is a reply to someone else — skip it
+            return None
 
     # Build BlueSky web link from AT URI
     # Format: at://did:plc:xxx/app.bsky.feed.post/yyy
@@ -226,6 +244,7 @@ def parse_post(feed_item: dict) -> dict | None:
         "external_url": external_url,
         "external_title": external_title,
         "external_thumb": external_thumb,
+        "is_self_reply": is_self_reply,
     }
 
 
@@ -236,7 +255,14 @@ def parse_post(feed_item: dict) -> dict | None:
 def format_telegram_message(post: dict, as_caption: bool = False) -> str:
     """Format a BlueSky post into a clean Telegram message.
 
-    Layout:
+    Layout (normal post):
+      [post text]
+
+      @handle
+      Source: BlueSky
+
+    Layout (thread reply):
+      [Thread]
       [post text]
 
       @handle
@@ -246,6 +272,11 @@ def format_telegram_message(post: dict, as_caption: bool = False) -> str:
     """
     max_len = 1024 if as_caption else 4096
     lines = []
+
+    # Thread label for self-replies
+    if post.get("is_self_reply"):
+        lines.append("<b>[Thread]</b>")
+        lines.append("")
 
     # Post text
     lines.append(escape_html(post["text"]))
