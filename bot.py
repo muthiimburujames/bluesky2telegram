@@ -39,7 +39,7 @@ STATE_FILE = Path(__file__).parent / "state" / "sent_posts.json"
 # ──────────────────────────────────────────────────────────────
 
 F1_ACCOUNTS = [
-    # ── Official ──
+     # ── Official ──
     "f1docs.bsky.social",                  # Official F1 Documents
     # ── Journalists ──
     "chrismedlandf1.bsky.social",      # Chris Medland
@@ -198,9 +198,12 @@ def parse_post(feed_item: dict) -> dict | None:
     embed_type = embed.get("$type", "")
     if "image" in embed_type:
         for img in embed.get("images", []):
+            # Prefer fullsize, fall back to thumb
+            fullsize = img.get("fullsize", "")
             thumb = img.get("thumb", "")
-            if thumb:
-                images.append(thumb)
+            url = fullsize or thumb
+            if url:
+                images.append(url)
 
     # Check for embedded links / external cards
     external_url = ""
@@ -288,6 +291,49 @@ def escape_html(text: str) -> str:
         .replace(">", "&gt;")
         .replace('"', "&quot;")
     )
+
+
+def send_telegram_album(caption: str, photo_urls: list[str]) -> bool:
+    """Send multiple photos as an album to the Telegram channel.
+
+    Telegram's sendMediaGroup displays all images grouped together.
+    The caption is attached to the first image.
+    Supports 2-10 photos per album.
+    """
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHANNEL_ID:
+        print("  ❌ Telegram credentials not set!")
+        return False
+
+    base_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
+
+    # Build the media array — caption goes on the first photo only
+    media = []
+    for i, url in enumerate(photo_urls[:10]):  # Telegram allows max 10
+        item = {"type": "photo", "media": url}
+        if i == 0:
+            item["caption"] = caption
+            item["parse_mode"] = "HTML"
+        media.append(item)
+
+    try:
+        resp = requests.post(
+            f"{base_url}/sendMediaGroup",
+            json={
+                "chat_id": TELEGRAM_CHANNEL_ID,
+                "media": media,
+            },
+            timeout=30,
+        )
+
+        if resp.status_code == 200:
+            return True
+        else:
+            print(f"  ❌ Telegram API error {resp.status_code}: {resp.text[:200]}")
+            return False
+
+    except requests.RequestException as e:
+        print(f"  ❌ Telegram send error: {e}")
+        return False
 
 
 def send_telegram_message(text: str, photo_url: str = "") -> bool:
@@ -450,21 +496,40 @@ def main():
     for post in new_posts:
         print(f"\n  📤 Sending: @{post['handle']} — {post['text'][:60]}...")
 
-        # Pick the best available image
-        photo = ""
-        if post["images"]:
-            photo = post["images"][0]
-        elif post["external_thumb"]:
-            photo = post["external_thumb"]
+        # Determine how many images we have
+        photos = post["images"]
+        external_thumb = post["external_thumb"]
+        success = False
 
-        # Format message (shorter for photo captions, full for text-only)
-        message = format_telegram_message(post, as_caption=bool(photo))
+        if len(photos) > 1:
+            # Multiple images — send as album
+            message = format_telegram_message(post, as_caption=True)
+            print(f"     📸 Sending album with {len(photos)} images...")
+            success = send_telegram_album(message, photos)
 
-        success = send_telegram_message(message, photo_url=photo)
+            if not success:
+                # Fallback: try sending just the first image
+                print("     ⚠ Album failed, retrying with first image only...")
+                success = send_telegram_message(message, photo_url=photos[0])
 
-        if not success and photo:
-            # If photo send fails, retry as text-only message
-            print("     ⚠ Retrying without photo...")
+        elif len(photos) == 1:
+            # Single image
+            message = format_telegram_message(post, as_caption=True)
+            success = send_telegram_message(message, photo_url=photos[0])
+
+        elif external_thumb:
+            # External link thumbnail
+            message = format_telegram_message(post, as_caption=True)
+            success = send_telegram_message(message, photo_url=external_thumb)
+
+        else:
+            # No images at all — text only
+            message = format_telegram_message(post, as_caption=False)
+            success = send_telegram_message(message)
+
+        if not success and (photos or external_thumb):
+            # Last resort: send as plain text
+            print("     ⚠ Retrying without any images...")
             message = format_telegram_message(post, as_caption=False)
             success = send_telegram_message(message)
 
