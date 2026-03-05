@@ -39,7 +39,7 @@ STATE_FILE = Path(__file__).parent / "state" / "sent_posts.json"
 # ──────────────────────────────────────────────────────────────
 
 F1_ACCOUNTS = [
-    # ── Official ──
+     # ── Official ──
     "f1docs.bsky.social",                  # Official F1 Documents
     # ── Journalists ──
     "chrismedlandf1.bsky.social",      # Chris Medland
@@ -50,6 +50,7 @@ F1_ACCOUNTS = [
     "thomasmaheronf1.bsky.social",     # Thomas Maher
     "andrewbensonf1.bsky.social",        # Andrew Benson
     "fdataanalysis.bsky.social",         # F1 Data Analysis
+    "f1tv.bsky.social",                  # F1TV 
 ]
 
 # Optional: add your own custom accounts via environment variable
@@ -223,6 +224,15 @@ def parse_post(feed_item: dict) -> dict | None:
             if url:
                 images.append(url)
 
+    # Check for embedded video
+    # BlueSky serves video as HLS streams (not direct MP4), so we grab
+    # the thumbnail and link to the original post for playback
+    video_thumbnail = ""
+    has_video = False
+    if "video" in embed_type:
+        has_video = True
+        video_thumbnail = embed.get("thumbnail", "")
+
     # Check for embedded links / external cards
     external_url = ""
     external_title = ""
@@ -233,6 +243,21 @@ def parse_post(feed_item: dict) -> dict | None:
         external_title = ext.get("title", "")
         external_thumb = ext.get("thumb", "")
 
+    # Handle recordWithMedia embeds (e.g. quote post + images/video)
+    if "recordWithMedia" in embed_type:
+        media = embed.get("media", {})
+        media_type = media.get("$type", "")
+        if "image" in media_type:
+            for img in media.get("images", []):
+                fullsize = img.get("fullsize", "")
+                thumb = img.get("thumb", "")
+                url = fullsize or thumb
+                if url:
+                    images.append(url)
+        if "video" in media_type:
+            has_video = True
+            video_thumbnail = media.get("thumbnail", "")
+
     return {
         "uri": uri,
         "text": text,
@@ -241,6 +266,8 @@ def parse_post(feed_item: dict) -> dict | None:
         "created_at": created_at,
         "bsky_link": bsky_link,
         "images": images,
+        "has_video": has_video,
+        "video_thumbnail": video_thumbnail,
         "external_url": external_url,
         "external_title": external_title,
         "external_thumb": external_thumb,
@@ -268,6 +295,13 @@ def format_telegram_message(post: dict, as_caption: bool = False) -> str:
       @handle
       Source: BlueSky
 
+    Layout (video post):
+      [Video - watch on BlueSky]
+      [post text]
+
+      @handle
+      Source: BlueSky
+
     If as_caption is True, keeps it under 1024 chars (Telegram caption limit).
     """
     max_len = 1024 if as_caption else 4096
@@ -276,6 +310,14 @@ def format_telegram_message(post: dict, as_caption: bool = False) -> str:
     # Thread label for self-replies
     if post.get("is_self_reply"):
         lines.append("<b>[Thread]</b>")
+        lines.append("")
+
+    # Video label with link to watch on BlueSky
+    if post.get("has_video") and post.get("bsky_link"):
+        lines.append(f'<b>[Video - <a href="{post["bsky_link"]}">watch on BlueSky</a>]</b>')
+        lines.append("")
+    elif post.get("has_video"):
+        lines.append("<b>[Video]</b>")
         lines.append("")
 
     # Post text
@@ -530,6 +572,8 @@ def main():
         # Determine how many images we have
         photos = post["images"]
         external_thumb = post["external_thumb"]
+        video_thumbnail = post.get("video_thumbnail", "")
+        has_video = post.get("has_video", False)
         success = False
 
         if len(photos) > 1:
@@ -548,6 +592,18 @@ def main():
             message = format_telegram_message(post, as_caption=True)
             success = send_telegram_message(message, photo_url=photos[0])
 
+        elif has_video and video_thumbnail:
+            # Video post — send thumbnail image with [Video] label in text
+            message = format_telegram_message(post, as_caption=True)
+            print("     🎬 Video post — sending thumbnail...")
+            success = send_telegram_message(message, photo_url=video_thumbnail)
+
+        elif has_video:
+            # Video post but no thumbnail available — send text only
+            message = format_telegram_message(post, as_caption=False)
+            print("     🎬 Video post — no thumbnail, sending text only...")
+            success = send_telegram_message(message)
+
         elif external_thumb:
             # External link thumbnail
             message = format_telegram_message(post, as_caption=True)
@@ -558,7 +614,7 @@ def main():
             message = format_telegram_message(post, as_caption=False)
             success = send_telegram_message(message)
 
-        if not success and (photos or external_thumb):
+        if not success and (photos or external_thumb or video_thumbnail):
             # Last resort: send as plain text
             print("     ⚠ Retrying without any images...")
             message = format_telegram_message(post, as_caption=False)
