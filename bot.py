@@ -42,15 +42,16 @@ F1_ACCOUNTS = [
      # ── Official ──
     "f1docs.bsky.social",                  # Official F1 Documents
     # ── Journalists ──
-    #"chrismedlandf1.bsky.social",      # Chris Medland
-    "albertfabrega.bsky.social",          # Abert Fabrega
+    "chrismedlandf1.bsky.social",      # Chris Medland
+    "somersf1.co.uk",          # Somers F1
     "jeppe.bsky.social",   # Jeppe Olsen
     "f1subreddit.bsky.social",         # F1 Subreddit
     "scarbstech.bsky.social",         # Scarbs Tech
     "thomasmaheronf1.bsky.social",     # Thomas Maher
     "andrewbensonf1.bsky.social",        # Andrew Benson
     "fdataanalysis.bsky.social",         # F1 Data Analysis
-    "f1tv.bsky.social",                  # F1TV 
+    "f1tv.bsky.social",                  # F1TV
+     "chainbear.bsky.social",              # Chain Bear F1
 ]
 
 # Optional: add your own custom accounts via environment variable
