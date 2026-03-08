@@ -4,27 +4,17 @@ A free, zero-code bot that automatically monitors Formula 1 accounts on BlueSky 
 
 ## What it does
 
-- Checks 10+ F1 BlueSky accounts every 30 minutes
+- Checks 10+ F1 BlueSky accounts every 5 minutes
+- To upload new.
 - Sends new posts to your Telegram channel with images and links
 - Remembers what it already sent (no duplicates)
-- Runs 100% free on GitHub Actions (you get 2,000 free minutes/month)
-- Optional: searches BlueSky for F1 keywords too
 
 ## Pre-built F1 accounts monitored
 
 | Account | Who |
 |---------|-----|
 | `f1.bsky.social` | Official F1 |
-| `chrismedlandf1.bsky.social` | Chris Medland |
-| `willbuxton.bsky.social` | Will Buxton |
-| `laurenceedmondson.bsky.social` | Laurence Edmondson (ESPN) |
-| `lukesmithf1.bsky.social` | Luke Smith |
-| `motorsport.bsky.social` | Motorsport.com |
-| `the-race.bsky.social` | The Race |
-| `planetf1.bsky.social` | PlanetF1 |
-| `autosport.bsky.social` | Autosport |
-| `racefans.bsky.social` | RaceFans |
-| `racingnews365.bsky.social` | RacingNews365 |
+| `chrismedlandf1.bsky.social` | Chris Medland ||
 
 > **Note:** Some handles above may not exist yet on BlueSky — the bot will simply skip accounts it can't find and continue with the rest. You can freely edit the list in `bot.py` or add more via GitHub settings (see Step 5).
 
