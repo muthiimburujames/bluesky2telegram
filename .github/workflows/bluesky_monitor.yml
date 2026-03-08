@@ -1,7 +1,7 @@
 name: F1 BlueSky to Telegram
 
 "on":
-  # Runs every 5 minutes
+  # Runs every 5 minutes (repo must be public for unlimited free minutes)
   schedule:
     - cron: '*/5 * * * *'
 
