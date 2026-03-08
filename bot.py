@@ -42,7 +42,7 @@ F1_ACCOUNTS = [
      # ── Official ──
     "f1docs.bsky.social",                  # Official F1 Documents
     # ── Journalists ──
-    "chrismedlandf1.bsky.social",      # Chris Medland
+    #"chrismedlandf1.bsky.social",      # Chris Medland
     "albertfabrega.bsky.social",          # Abert Fabrega
     "jeppe.bsky.social",   # Jeppe Olsen
     "f1subreddit.bsky.social",         # F1 Subreddit
