@@ -59,7 +59,7 @@ F1_ACCOUNTS = [
     "andrewbensonf1.bsky.social",        # Andrew Benson
     "fdataanalysis.bsky.social",         # F1 Data Analysis
     "f1tv.bsky.social",                  # F1TV
-     "chainbear.bsky.social",              # Chain Bear F1
+    # "chainbear.bsky.social",              # Chain Bear F1
 ]
 
 extra = os.environ.get("EXTRA_BSKY_ACCOUNTS", "")
