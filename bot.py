@@ -49,7 +49,6 @@ POPULAR_THRESHOLD = int(os.environ.get("POPULAR_THRESHOLD", "50"))
 # ──────────────────────────────────────────────────────────────
 
 F1_ACCOUNTS = [
-     # ── Official ──
     "f1docs.bsky.social",                  # Official F1 Documents
     # ── Journalists ──
     "chrismedlandf1.bsky.social",      # Chris Medland
