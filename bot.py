@@ -5,6 +5,7 @@ Designed to run on GitHub Actions (free tier) on a schedule.
 
 Features:
   - Rich text: clickable links and @mentions from BlueSky facets
+  - RSS feed monitoring from F1 news websites
   - Skip reposts/boosts to avoid duplicates
   - Duplicate link detection (same article shared by multiple accounts)
   - Smart truncation at sentence boundaries
@@ -23,6 +24,7 @@ import time
 import hashlib
 import re
 import urllib.parse
+import feedparser
 import requests
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -47,7 +49,7 @@ POPULAR_THRESHOLD = int(os.environ.get("POPULAR_THRESHOLD", "50"))
 # ──────────────────────────────────────────────────────────────
 
 F1_ACCOUNTS = [
-     # ── Official ──
+     # ── Official ──
     "f1docs.bsky.social",                  # Official F1 Documents
     # ── Journalists ──
     "chrismedlandf1.bsky.social",      # Chris Medland
@@ -72,6 +74,16 @@ if extra.strip():
 
 ENABLE_KEYWORD_SEARCH = os.environ.get("ENABLE_KEYWORD_SEARCH", "false").lower() == "true"
 F1_SEARCH_KEYWORDS = ["Formula 1", "Formula1", "#F1"]
+
+# ──────────────────────────────────────────────────────────────
+#  RSS Feeds
+#  Configure via the RSS_FEEDS GitHub variable.
+#  Format: comma-separated feed URLs, e.g.:
+#  https://www.motorsport.com/rss/f1/news,https://www.autosport.com/rss/f1/news/
+# ──────────────────────────────────────────────────────────────
+
+RSS_FEEDS_RAW = os.environ.get("RSS_FEEDS", "")
+RSS_FEEDS = [url.strip() for url in RSS_FEEDS_RAW.split(",") if url.strip()]
 
 
 # ──────────────────────────────────────────────────────────────
@@ -454,7 +466,9 @@ def format_telegram_message(post: dict, as_caption: bool = False) -> str:
         lines.append(f'<a href="{post["bsky_link"]}">@{escape_html(post["handle"])}</a>')
     else:
         lines.append(f'@{escape_html(post["handle"])}')
-    lines.append("Source: BlueSky")
+    # Source
+    source_label = "Source: RSS" if post.get("is_rss") else "Source: BlueSky"
+    lines.append(source_label)
 
     message = "\n".join(lines)
 
@@ -478,9 +492,10 @@ def build_inline_buttons(post: dict) -> dict | None:
     share_text = post["text"][:100] + ("..." if len(post["text"]) > 100 else "")
     share_url = ("https://t.me/share/url?"
                  + urllib.parse.urlencode({"url": post["bsky_link"], "text": share_text}))
+    view_label = "Read Article" if post.get("is_rss") else "View on BlueSky"
     return {
         "inline_keyboard": [[
-            {"text": "View on BlueSky", "url": post["bsky_link"]},
+            {"text": view_label, "url": post["bsky_link"]},
             {"text": "Share", "url": share_url},
         ]]
     }
@@ -698,6 +713,114 @@ def collect_posts_from_search() -> list[dict]:
     return all_posts
 
 
+def collect_posts_from_rss() -> list[dict]:
+    """Fetch recent articles from configured RSS feeds.
+
+    Returns posts in the same format as BlueSky posts so they flow
+    through the same deduplication, formatting, and sending pipeline.
+    """
+    if not RSS_FEEDS:
+        return []
+
+    all_posts = []
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=LOOKBACK_HOURS)
+
+    for feed_url in RSS_FEEDS:
+        print(f"  📰 Fetching RSS: {feed_url[:60]}...")
+        try:
+            feed = feedparser.parse(feed_url)
+        except Exception as e:
+            print(f"     ⚠ RSS parse error: {e}")
+            continue
+
+        feed_title = feed.feed.get("title", feed_url)
+
+        for entry in feed.entries[:20]:  # Check last 20 entries per feed
+            # Parse published date
+            published = None
+            for date_field in ("published_parsed", "updated_parsed"):
+                parsed_time = entry.get(date_field)
+                if parsed_time:
+                    try:
+                        published = datetime(*parsed_time[:6], tzinfo=timezone.utc)
+                    except (TypeError, ValueError):
+                        pass
+                    break
+
+            if not published:
+                # No parseable date — skip to be safe
+                continue
+
+            if published < cutoff:
+                continue
+
+            title = entry.get("title", "").strip()
+            summary = entry.get("summary", "").strip()
+            link = entry.get("link", "").strip()
+
+            if not title:
+                continue
+
+            # Clean HTML tags from summary
+            clean_summary = re.sub(r'<[^>]+>', '', summary).strip()
+            # Limit summary length
+            if len(clean_summary) > 300:
+                clean_summary = smart_truncate(clean_summary, 300)
+
+            # Build the post text: title + summary if available
+            text = title
+            if clean_summary and clean_summary.lower() != title.lower():
+                text = f"{title}\n\n{clean_summary}"
+
+            # Try to find an image from the entry
+            image_url = ""
+            # Check media:content or media:thumbnail
+            for media in entry.get("media_content", []):
+                if media.get("medium") == "image" or "image" in media.get("type", ""):
+                    image_url = media.get("url", "")
+                    break
+            if not image_url:
+                for media in entry.get("media_thumbnail", []):
+                    image_url = media.get("url", "")
+                    break
+            # Check enclosures
+            if not image_url:
+                for enc in entry.get("enclosures", []):
+                    if "image" in enc.get("type", ""):
+                        image_url = enc.get("href", "") or enc.get("url", "")
+                        break
+
+            # Create a unique URI for deduplication (RSS entries don't have AT URIs)
+            entry_id = entry.get("id", "") or link or title
+            uri = f"rss:{hashlib.sha256(entry_id.encode()).hexdigest()[:32]}"
+
+            all_posts.append({
+                "uri": uri,
+                "text": text,
+                "handle": feed_title,
+                "display_name": feed_title,
+                "created_at": published,
+                "bsky_link": link,  # Re-use bsky_link field for the article URL
+                "images": [image_url] if image_url else [],
+                "has_video": False,
+                "video_thumbnail": "",
+                "external_url": link,
+                "external_title": "",
+                "external_thumb": "",
+                "is_self_reply": False,
+                "category": categorize_post(text),
+                "facets": [],
+                "like_count": 0,
+                "repost_count": 0,
+                "reply_count": 0,
+                "is_rss": True,
+            })
+
+        time.sleep(0.3)
+
+    return all_posts
+
+
 def main():
     print("=" * 60)
     print("🏁 F1 BlueSky → Telegram Bot")
@@ -705,6 +828,7 @@ def main():
     print(f"   Lookback: {LOOKBACK_HOURS} hours")
     print(f"   Accounts: {len(F1_ACCOUNTS)}")
     print(f"   Keyword search: {'ON' if ENABLE_KEYWORD_SEARCH else 'OFF'}")
+    print(f"   RSS feeds: {len(RSS_FEEDS)}")
     print("=" * 60)
 
     if not TELEGRAM_BOT_TOKEN:
@@ -745,6 +869,8 @@ def main():
         posts = collect_posts_from_accounts()
         print("\n🔍 Searching keywords...")
         posts.extend(collect_posts_from_search())
+        print("\n📰 Fetching RSS feeds...")
+        posts.extend(collect_posts_from_rss())
 
         # Deduplicate by URI
         posts = deduplicate_posts(posts)
