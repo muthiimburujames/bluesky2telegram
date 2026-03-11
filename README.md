@@ -1,10 +1,10 @@
-# 🏎 F1 BlueSky → Telegram Bot
+# F1 BlueSky → Telegram Bot
 
 A free, automated bot that monitors Formula 1 accounts on BlueSky and posts their content to your Telegram channel. Runs entirely on GitHub Actions — no server, no always-on computer, no costs.
 
 ## What it does
 
-- Checks 11 F1 BlueSky accounts every 5 minutes and posts new content to your Telegram channel
+- Checks F1 BlueSky accounts every 5 minutes and posts new content to your Telegram channel
 - Renders rich text with clickable links and @mentions (not flat text)
 - Sends full-quality images, multi-image albums, and video thumbnails
 - Auto-categorizes posts as Breaking, Technical, Transfer, Race, Regulation, or News
@@ -174,8 +174,6 @@ If you see `"ok": true` and "Test" appears in your channel, everything is connec
 3. If GitHub asks you to enable workflows, click the green button
 4. To test immediately: click the workflow name → **"Run workflow"** → **"Run workflow"**
 5. Watch the run — click on it to see live logs
-
-### 🎉 That's it!
 
 The bot will now automatically run every 5 minutes, check all configured BlueSky accounts, and post new F1 content to your Telegram channel.
 
