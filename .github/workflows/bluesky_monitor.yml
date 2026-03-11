@@ -36,6 +36,7 @@ jobs:
           MAX_POSTS_PER_RUN: ${{ vars.MAX_POSTS_PER_RUN || '10' }}
           ENABLE_KEYWORD_SEARCH: ${{ vars.ENABLE_KEYWORD_SEARCH || 'false' }}
           EXTRA_BSKY_ACCOUNTS: ${{ vars.EXTRA_BSKY_ACCOUNTS || '' }}
+          RSS_FEEDS: ${{ vars.RSS_FEEDS || '' }}
         run: python bot.py
 
       - name: Commit updated state
