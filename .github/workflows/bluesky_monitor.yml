@@ -1,12 +1,19 @@
 name: F1 BlueSky to Telegram
 
 "on":
-  # Runs every 5 minutes (repo must be public for unlimited free minutes)
+  # Backup schedule — primary trigger is via external scheduler (cron-job.org)
+  # hitting the workflow_dispatch endpoint every 5 minutes.
+  # This cron is a fallback in case the external scheduler goes down.
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '*/30 * * * *'
 
   # Allows you to manually trigger from GitHub's Actions tab
   workflow_dispatch:
+
+# Prevent overlapping runs (if external scheduler and GitHub cron fire close together)
+concurrency:
+  group: f1-bot
+  cancel-in-progress: false
 
 # Give the workflow permission to push state changes back to the repo
 permissions:
