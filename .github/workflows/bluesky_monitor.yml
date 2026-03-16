@@ -52,4 +52,5 @@ jobs:
           git config user.email "bot@github-actions"
           git add state/
           git diff --staged --quiet || git commit -m "Update sent posts state [skip ci]"
-          git push
+          git pull --rebase origin main || true
+          git push || echo "⚠ Push failed — state will be re-synced on next run"
