@@ -44,6 +44,9 @@ jobs:
           ENABLE_KEYWORD_SEARCH: ${{ vars.ENABLE_KEYWORD_SEARCH || 'false' }}
           EXTRA_BSKY_ACCOUNTS: ${{ vars.EXTRA_BSKY_ACCOUNTS || '' }}
           RSS_FEEDS: ${{ vars.RSS_FEEDS || '' }}
+          REDDIT_SUBREDDITS: ${{ vars.REDDIT_SUBREDDITS || 'formula1' }}
+          REDDIT_MIN_SCORE: ${{ vars.REDDIT_MIN_SCORE || '100' }}
+          FIA_DOCUMENTS: ${{ vars.FIA_DOCUMENTS || 'true' }}
         run: python bot.py
 
       - name: Commit updated state
