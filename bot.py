@@ -6,6 +6,9 @@ Designed to run on GitHub Actions (free tier) on a schedule.
 Features:
   - Rich text: clickable links and @mentions from BlueSky facets
   - RSS feed monitoring from F1 news websites
+  - Reddit r/formula1 hot posts (with score filtering)
+  - FIA official documents (steward decisions, technical directives)
+  - YouTube F1 channels via RSS feeds
   - Skip reposts/boosts to avoid duplicates
   - Duplicate link detection (same article shared by multiple accounts)
   - Smart truncation at sentence boundaries
@@ -49,18 +52,16 @@ POPULAR_THRESHOLD = int(os.environ.get("POPULAR_THRESHOLD", "50"))
 # ──────────────────────────────────────────────────────────────
 
 F1_ACCOUNTS = [
-    "f1docs.bsky.social",                  # Official F1 Documents
-    # ── Journalists ──
-    "chrismedlandf1.bsky.social",      # Chris Medland
-    "somersf1.co.uk",          # Somers F1
-    "jeppe.bsky.social",   # Jeppe Olsen
-    "f1subreddit.bsky.social",         # F1 Subreddit
-    "scarbstech.bsky.social",         # Scarbs Tech
-    "thomasmaheronf1.bsky.social",     # Thomas Maher
-    "andrewbensonf1.bsky.social",        # Andrew Benson
-    "fdataanalysis.bsky.social",         # F1 Data Analysis
-    "f1tv.bsky.social",                  # F1TV
-    # "chainbear.bsky.social",              # Chain Bear F1
+    "f1docs.bsky.social",
+    "chrismedlandf1.bsky.social",
+    "somersf1.co.uk",
+    "jeppe.bsky.social",
+    "f1subreddit.bsky.social",
+    "scarbstech.bsky.social",
+    "thomasmaheronf1.bsky.social",
+    "andrewbensonf1.bsky.social",
+    "fdataanalysis.bsky.social",
+    "f1tv.bsky.social",
 ]
 
 extra = os.environ.get("EXTRA_BSKY_ACCOUNTS", "")
@@ -83,6 +84,38 @@ F1_SEARCH_KEYWORDS = ["Formula 1", "Formula1", "#F1"]
 
 RSS_FEEDS_RAW = os.environ.get("RSS_FEEDS", "")
 RSS_FEEDS = [url.strip() for url in RSS_FEEDS_RAW.split(",") if url.strip()]
+
+# ──────────────────────────────────────────────────────────────
+#  Reddit r/formula1
+#  Configure via the REDDIT_SUBREDDITS GitHub variable.
+#  Default: r/formula1. Format: comma-separated subreddit names
+#  e.g.: formula1,F1Technical,FormulaFeeders
+# ──────────────────────────────────────────────────────────────
+
+REDDIT_SUBS_RAW = os.environ.get("REDDIT_SUBREDDITS", "formula1")
+REDDIT_SUBREDDITS = [s.strip() for s in REDDIT_SUBS_RAW.split(",") if s.strip()]
+# Minimum upvotes for a Reddit post to be forwarded (filters noise)
+REDDIT_MIN_SCORE = int(os.environ.get("REDDIT_MIN_SCORE", "100"))
+
+# ──────────────────────────────────────────────────────────────
+#  FIA Documents (race weekend steward decisions, technical directives)
+#  Enabled by default. Set FIA_DOCUMENTS=false to disable.
+# ──────────────────────────────────────────────────────────────
+
+FIA_DOCUMENTS_ENABLED = os.environ.get("FIA_DOCUMENTS", "true").lower() == "true"
+
+# ──────────────────────────────────────────────────────────────
+#  YouTube F1 Channels
+#  YouTube channels have built-in RSS feeds. Add them to your
+#  RSS_FEEDS variable using this format:
+#  https://www.youtube.com/feeds/videos.xml?channel_id=CHANNEL_ID
+#
+#  Useful F1 YouTube channel IDs:
+#    Chain Bear:    UCB_qr75-ydFVKSF9s5xFvHw
+#    Peter Windsor: UC_ULpnIIQBPSx55F5GwjRhA
+#    Tech Tuesday:  (via official F1 channel)
+#  These flow through the existing RSS pipeline automatically.
+# ──────────────────────────────────────────────────────────────
 
 
 # ──────────────────────────────────────────────────────────────
@@ -466,7 +499,14 @@ def format_telegram_message(post: dict, as_caption: bool = False) -> str:
     else:
         lines.append(f'@{escape_html(post["handle"])}')
     # Source
-    source_label = "Source: RSS" if post.get("is_rss") else "Source: BlueSky"
+    if post.get("is_reddit"):
+        source_label = "Source: Reddit"
+    elif post.get("is_fia"):
+        source_label = "Source: FIA"
+    elif post.get("is_rss"):
+        source_label = "Source: RSS"
+    else:
+        source_label = "Source: BlueSky"
     lines.append(source_label)
 
     message = "\n".join(lines)
@@ -491,7 +531,10 @@ def build_inline_buttons(post: dict) -> dict | None:
     share_text = post["text"][:100] + ("..." if len(post["text"]) > 100 else "")
     share_url = ("https://t.me/share/url?"
                  + urllib.parse.urlencode({"url": post["bsky_link"], "text": share_text}))
-    view_label = "Read Article" if post.get("is_rss") else "View on BlueSky"
+    view_label = "Read Article" if post.get("is_rss") else \
+                 "View on Reddit" if post.get("is_reddit") else \
+                 "View Document" if post.get("is_fia") else \
+                 "View on BlueSky"
     return {
         "inline_keyboard": [[
             {"text": view_label, "url": post["bsky_link"]},
@@ -820,6 +863,249 @@ def collect_posts_from_rss() -> list[dict]:
     return all_posts
 
 
+def collect_posts_from_reddit() -> list[dict]:
+    """Fetch hot posts from configured Reddit subreddits using the public .json endpoint.
+
+    No API key needed — Reddit serves JSON for any subreddit URL with .json appended.
+    We filter by minimum score to avoid noise.
+    """
+    if not REDDIT_SUBREDDITS:
+        return []
+
+    all_posts = []
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=LOOKBACK_HOURS)
+    headers = {"User-Agent": "F1TelegramBot/1.0 (GitHub Actions)"}
+
+    for subreddit in REDDIT_SUBREDDITS:
+        print(f"  🟠 Fetching Reddit r/{subreddit}...")
+        try:
+            resp = requests.get(
+                f"https://www.reddit.com/r/{subreddit}/hot.json?limit=25",
+                headers=headers, timeout=15)
+            if resp.status_code != 200:
+                print(f"     ⚠ Reddit returned {resp.status_code}")
+                continue
+            data = resp.json()
+        except (requests.RequestException, json.JSONDecodeError) as e:
+            print(f"     ⚠ Reddit error: {e}")
+            continue
+
+        for child in data.get("data", {}).get("children", []):
+            post = child.get("data", {})
+            if post.get("stickied"):
+                continue  # Skip pinned/megathread posts
+
+            score = post.get("score", 0)
+            if score < REDDIT_MIN_SCORE:
+                continue
+
+            created_utc = post.get("created_utc", 0)
+            created_at = datetime.fromtimestamp(created_utc, tz=timezone.utc)
+            if created_at < cutoff:
+                continue
+
+            title = post.get("title", "").strip()
+            selftext = post.get("selftext", "").strip()
+            permalink = post.get("permalink", "")
+            url = post.get("url", "")
+            link = f"https://www.reddit.com{permalink}" if permalink else url
+
+            if not title:
+                continue
+
+            # Build post text: title + summary for self posts
+            text = title
+            if selftext and not post.get("is_self", False):
+                pass  # Link posts — just title
+            elif selftext:
+                clean = selftext[:300]
+                if len(selftext) > 300:
+                    clean = smart_truncate(clean, 300)
+                text = f"{title}\n\n{clean}"
+
+            # Get thumbnail/preview image
+            image_url = ""
+            preview = post.get("preview", {})
+            if preview:
+                images = preview.get("images", [])
+                if images:
+                    source = images[0].get("source", {})
+                    image_url = source.get("url", "").replace("&amp;", "&")
+
+            # If it's a link post to an article, use it as external_url
+            external_url = ""
+            if not post.get("is_self", False) and url and "reddit.com" not in url:
+                external_url = url
+
+            uri = f"reddit:{post.get('id', hashlib.sha256(title.encode()).hexdigest()[:16])}"
+            author = post.get("author", "unknown")
+
+            all_posts.append({
+                "uri": uri,
+                "text": text,
+                "handle": f"r/{subreddit}",
+                "display_name": f"r/{subreddit} (u/{author})",
+                "created_at": created_at,
+                "bsky_link": link,
+                "images": [image_url] if image_url else [],
+                "has_video": False,
+                "video_thumbnail": "",
+                "external_url": external_url,
+                "external_title": "",
+                "external_thumb": "",
+                "is_self_reply": False,
+                "category": categorize_post(text),
+                "facets": [],
+                "like_count": score,
+                "repost_count": 0,
+                "reply_count": post.get("num_comments", 0),
+                "is_rss": False,
+                "is_reddit": True,
+            })
+
+        time.sleep(1)  # Be respectful to Reddit
+
+    return all_posts
+
+
+def collect_posts_from_fia() -> list[dict]:
+    """Fetch latest FIA F1 documents from the FIA website.
+
+    Uses the FIA documents API endpoint to get steward decisions,
+    technical directives, and other official documents.
+    """
+    if not FIA_DOCUMENTS_ENABLED:
+        return []
+
+    print("  📋 Fetching FIA documents...")
+    all_posts = []
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=LOOKBACK_HOURS)
+
+    # The FIA documents page for F1 current season
+    fia_url = "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/season/season-2026-2072"
+
+    try:
+        resp = requests.get(fia_url, timeout=15,
+                            headers={"User-Agent": "F1TelegramBot/1.0"})
+        if resp.status_code != 200:
+            print(f"     ⚠ FIA returned {resp.status_code}")
+            return []
+
+        # Parse document links from the HTML
+        # FIA document entries follow a pattern with document titles and PDF links
+        html = resp.text
+
+        # Find document entries — they contain links to PDFs and document titles
+        # Pattern: look for document listing items
+        doc_pattern = re.findall(
+            r'<a[^>]*href="(/sites/default/files/[^"]*\.pdf)"[^>]*>.*?</a>',
+            html, re.DOTALL
+        )
+        title_pattern = re.findall(
+            r'class="document-title[^"]*"[^>]*>(.*?)</(?:div|span|a)',
+            html, re.DOTALL
+        )
+
+        # Also try a more general pattern for document links
+        if not doc_pattern:
+            doc_pattern = re.findall(
+                r'href="(https?://[^"]*fia[^"]*\.pdf)"',
+                html
+            )
+
+        # Try to find structured document data (some FIA pages use JSON-LD or data attributes)
+        json_match = re.search(r'var\s+documents\s*=\s*(\[.*?\]);', html, re.DOTALL)
+        if json_match:
+            try:
+                docs_data = json.loads(json_match.group(1))
+                for doc in docs_data[:15]:
+                    title = doc.get("title", "") or doc.get("name", "")
+                    pdf_url = doc.get("url", "") or doc.get("file", "")
+                    pub_date_str = doc.get("date", "") or doc.get("published", "")
+
+                    if not title:
+                        continue
+
+                    # Try to parse the date
+                    published = None
+                    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%d.%m.%Y", "%d/%m/%Y"):
+                        try:
+                            published = datetime.strptime(pub_date_str, fmt).replace(tzinfo=timezone.utc)
+                            break
+                        except (ValueError, TypeError):
+                            continue
+                    if not published:
+                        published = datetime.now(timezone.utc)
+
+                    if published < cutoff:
+                        continue
+
+                    link = pdf_url if pdf_url.startswith("http") else f"https://www.fia.com{pdf_url}"
+                    uri = f"fia:{hashlib.sha256(title.encode()).hexdigest()[:16]}"
+
+                    all_posts.append({
+                        "uri": uri,
+                        "text": f"FIA Document: {title.strip()}",
+                        "handle": "FIA",
+                        "display_name": "FIA",
+                        "created_at": published,
+                        "bsky_link": link,
+                        "images": [],
+                        "has_video": False,
+                        "video_thumbnail": "",
+                        "external_url": link,
+                        "external_title": title.strip(),
+                        "external_thumb": "",
+                        "is_self_reply": False,
+                        "category": "Regulation",
+                        "facets": [],
+                        "like_count": 0,
+                        "repost_count": 0,
+                        "reply_count": 0,
+                        "is_rss": False,
+                        "is_fia": True,
+                    })
+            except (json.JSONDecodeError, KeyError):
+                pass
+
+        # Fallback: extract whatever document links we can find from raw HTML
+        if not all_posts and (doc_pattern or title_pattern):
+            titles = title_pattern if title_pattern else [f"FIA Document {i+1}" for i in range(len(doc_pattern))]
+            for i, pdf_link in enumerate(doc_pattern[:10]):
+                title = re.sub(r'<[^>]+>', '', titles[i]).strip() if i < len(titles) else f"FIA Document"
+                link = pdf_link if pdf_link.startswith("http") else f"https://www.fia.com{pdf_link}"
+                uri = f"fia:{hashlib.sha256(link.encode()).hexdigest()[:16]}"
+
+                all_posts.append({
+                    "uri": uri,
+                    "text": f"FIA Document: {title}",
+                    "handle": "FIA",
+                    "display_name": "FIA",
+                    "created_at": datetime.now(timezone.utc),  # No date available in fallback
+                    "bsky_link": link,
+                    "images": [],
+                    "has_video": False,
+                    "video_thumbnail": "",
+                    "external_url": link,
+                    "external_title": title,
+                    "external_thumb": "",
+                    "is_self_reply": False,
+                    "category": "Regulation",
+                    "facets": [],
+                    "like_count": 0,
+                    "repost_count": 0,
+                    "reply_count": 0,
+                    "is_rss": False,
+                    "is_fia": True,
+                })
+
+    except requests.RequestException as e:
+        print(f"     ⚠ FIA fetch error: {e}")
+
+    print(f"     Found {len(all_posts)} FIA documents")
+    return all_posts
+
+
 def main():
     print("=" * 60)
     print("🏁 F1 BlueSky → Telegram Bot")
@@ -828,6 +1114,8 @@ def main():
     print(f"   Accounts: {len(F1_ACCOUNTS)}")
     print(f"   Keyword search: {'ON' if ENABLE_KEYWORD_SEARCH else 'OFF'}")
     print(f"   RSS feeds: {len(RSS_FEEDS)}")
+    print(f"   Reddit: {', '.join('r/' + s for s in REDDIT_SUBREDDITS)} (min score: {REDDIT_MIN_SCORE})")
+    print(f"   FIA documents: {'ON' if FIA_DOCUMENTS_ENABLED else 'OFF'}")
     print("=" * 60)
 
     if not TELEGRAM_BOT_TOKEN:
@@ -870,6 +1158,10 @@ def main():
         posts.extend(collect_posts_from_search())
         print("\n📰 Fetching RSS feeds...")
         posts.extend(collect_posts_from_rss())
+        print("\n🟠 Fetching Reddit...")
+        posts.extend(collect_posts_from_reddit())
+        print("\n📋 Fetching FIA documents...")
+        posts.extend(collect_posts_from_fia())
 
         # Deduplicate by URI
         posts = deduplicate_posts(posts)
