@@ -52,16 +52,16 @@ POPULAR_THRESHOLD = int(os.environ.get("POPULAR_THRESHOLD", "50"))
 # ──────────────────────────────────────────────────────────────
 
 F1_ACCOUNTS = [
-    "f1docs.bsky.social",
-    "chrismedlandf1.bsky.social",
-    "somersf1.co.uk",
-    "jeppe.bsky.social",
-    "f1subreddit.bsky.social",
-    "scarbstech.bsky.social",
-    "thomasmaheronf1.bsky.social",
-    "andrewbensonf1.bsky.social",
-    "fdataanalysis.bsky.social",
-    "f1tv.bsky.social",
+  "f1docs.bsky.social",
+  "chrismedlandf1.bsky.social",
+  "somersf1.co.uk",
+  "jeppe.bsky.social",
+  "f1subreddit.bsky.social",
+  "scarbstech.bsky.social",
+  "thomasmaheronf1.bsky.social",
+  "andrewbensonf1.bsky.social",
+  "fdataanalysis.bsky.social",
+  "f1tv.bsky.social",
 ]
 
 extra = os.environ.get("EXTRA_BSKY_ACCOUNTS", "")
