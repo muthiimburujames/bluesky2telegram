@@ -54,12 +54,10 @@ POPULAR_THRESHOLD = int(os.environ.get("POPULAR_THRESHOLD", "50"))
 F1_ACCOUNTS = [
   "f1docs.bsky.social",
   "chrismedlandf1.bsky.social",
-  "somersf1.co.uk",
   "jeppe.bsky.social",
   "f1subreddit.bsky.social",
   "scarbstech.bsky.social",
   "thomasmaheronf1.bsky.social",
-  "andrewbensonf1.bsky.social",
   "fdataanalysis.bsky.social",
   "f1tv.bsky.social",
 ]
@@ -864,106 +862,132 @@ def collect_posts_from_rss() -> list[dict]:
 
 
 def collect_posts_from_reddit() -> list[dict]:
-    """Fetch hot posts from configured Reddit subreddits using the public .json endpoint.
+    """Fetch hot posts from configured Reddit subreddits using RSS feeds.
 
-    No API key needed — Reddit serves JSON for any subreddit URL with .json appended.
-    We filter by minimum score to avoid noise.
+    Reddit's JSON API blocks cloud server IPs, but RSS feeds are more
+    permissive. We use the /hot.rss and /top.rss feeds via feedparser.
+    Score filtering isn't available via RSS, so we use the 'top' feed
+    which naturally surfaces high-engagement posts.
     """
     if not REDDIT_SUBREDDITS:
         return []
 
     all_posts = []
     cutoff = datetime.now(timezone.utc) - timedelta(hours=LOOKBACK_HOURS)
-    headers = {"User-Agent": "F1TelegramBot/1.0 (GitHub Actions)"}
 
     for subreddit in REDDIT_SUBREDDITS:
-        print(f"  🟠 Fetching Reddit r/{subreddit}...")
-        try:
-            resp = requests.get(
-                f"https://www.reddit.com/r/{subreddit}/hot.json?limit=25",
-                headers=headers, timeout=15)
-            if resp.status_code != 200:
-                print(f"     ⚠ Reddit returned {resp.status_code}")
-                continue
-            data = resp.json()
-        except (requests.RequestException, json.JSONDecodeError) as e:
-            print(f"     ⚠ Reddit error: {e}")
-            continue
+        # Fetch both hot and top (past hour) for best coverage
+        feed_urls = [
+            f"https://www.reddit.com/r/{subreddit}/hot.rss?limit=20",
+            f"https://www.reddit.com/r/{subreddit}/top.rss?t=day&limit=10",
+        ]
 
-        for child in data.get("data", {}).get("children", []):
-            post = child.get("data", {})
-            if post.get("stickied"):
-                continue  # Skip pinned/megathread posts
-
-            score = post.get("score", 0)
-            if score < REDDIT_MIN_SCORE:
+        for feed_url in feed_urls:
+            label = "hot" if "/hot" in feed_url else "top"
+            print(f"  🟠 Fetching Reddit r/{subreddit}/{label}...")
+            try:
+                feed = feedparser.parse(feed_url,
+                    request_headers={"User-Agent": "Mozilla/5.0 (compatible; F1Bot/1.0)"})
+            except Exception as e:
+                print(f"     ⚠ Reddit RSS error: {e}")
                 continue
 
-            created_utc = post.get("created_utc", 0)
-            created_at = datetime.fromtimestamp(created_utc, tz=timezone.utc)
-            if created_at < cutoff:
+            if not feed.entries:
+                # Fallback: try old.reddit.com which is sometimes more permissive
+                alt_url = feed_url.replace("www.reddit.com", "old.reddit.com")
+                try:
+                    feed = feedparser.parse(alt_url,
+                        request_headers={"User-Agent": "Mozilla/5.0 (compatible; F1Bot/1.0)"})
+                except Exception:
+                    pass
+
+            if not feed.entries:
+                print(f"     ⚠ No entries from r/{subreddit}/{label}")
                 continue
 
-            title = post.get("title", "").strip()
-            selftext = post.get("selftext", "").strip()
-            permalink = post.get("permalink", "")
-            url = post.get("url", "")
-            link = f"https://www.reddit.com{permalink}" if permalink else url
+            print(f"     Found {len(feed.entries)} entries")
 
-            if not title:
-                continue
+            for entry in feed.entries:
+                # Parse published date
+                published = None
+                for date_field in ("published_parsed", "updated_parsed"):
+                    parsed_time = entry.get(date_field)
+                    if parsed_time:
+                        try:
+                            published = datetime(*parsed_time[:6], tzinfo=timezone.utc)
+                        except (TypeError, ValueError):
+                            pass
+                        break
 
-            # Build post text: title + summary for self posts
-            text = title
-            if selftext and not post.get("is_self", False):
-                pass  # Link posts — just title
-            elif selftext:
-                clean = selftext[:300]
-                if len(selftext) > 300:
-                    clean = smart_truncate(clean, 300)
-                text = f"{title}\n\n{clean}"
+                if not published:
+                    continue
+                if published < cutoff:
+                    continue
 
-            # Get thumbnail/preview image
-            image_url = ""
-            preview = post.get("preview", {})
-            if preview:
-                images = preview.get("images", [])
-                if images:
-                    source = images[0].get("source", {})
-                    image_url = source.get("url", "").replace("&amp;", "&")
+                title = entry.get("title", "").strip()
+                link = entry.get("link", "").strip()
+                if not title:
+                    continue
 
-            # If it's a link post to an article, use it as external_url
-            external_url = ""
-            if not post.get("is_self", False) and url and "reddit.com" not in url:
-                external_url = url
+                # Reddit RSS includes author as /u/username
+                author = entry.get("author", "").replace("/u/", "")
+                if not author:
+                    author_detail = entry.get("author_detail", {})
+                    author = author_detail.get("name", "unknown").replace("/u/", "")
 
-            uri = f"reddit:{post.get('id', hashlib.sha256(title.encode()).hexdigest()[:16])}"
-            author = post.get("author", "unknown")
+                # Extract content/summary — Reddit RSS puts HTML content in the summary
+                summary_html = entry.get("summary", "")
+                # Strip HTML tags for clean text
+                clean_summary = re.sub(r'<[^>]+>', '', summary_html).strip()
+                # Remove the "[link]" and "[comments]" footer Reddit adds
+                clean_summary = re.sub(r'\[link\].*$', '', clean_summary, flags=re.DOTALL).strip()
+                clean_summary = re.sub(r'submitted by\s+\S+.*$', '', clean_summary, flags=re.DOTALL).strip()
 
-            all_posts.append({
-                "uri": uri,
-                "text": text,
-                "handle": f"r/{subreddit}",
-                "display_name": f"r/{subreddit} (u/{author})",
-                "created_at": created_at,
-                "bsky_link": link,
-                "images": [image_url] if image_url else [],
-                "has_video": False,
-                "video_thumbnail": "",
-                "external_url": external_url,
-                "external_title": "",
-                "external_thumb": "",
-                "is_self_reply": False,
-                "category": categorize_post(text),
-                "facets": [],
-                "like_count": score,
-                "repost_count": 0,
-                "reply_count": post.get("num_comments", 0),
-                "is_rss": False,
-                "is_reddit": True,
-            })
+                text = title
+                if clean_summary and clean_summary.lower() != title.lower() and len(clean_summary) > 20:
+                    truncated = smart_truncate(clean_summary, 300)
+                    text = f"{title}\n\n{truncated}"
 
-        time.sleep(1)  # Be respectful to Reddit
+                # Try to extract image from content
+                image_url = ""
+                img_match = re.search(r'<img[^>]*src="([^"]+)"', summary_html)
+                if img_match:
+                    image_url = img_match.group(1)
+
+                # Check for external URL (link posts)
+                external_url = ""
+                if link and "reddit.com" not in link and "redd.it" not in link:
+                    external_url = link
+                # Reddit RSS link is usually the comments page
+                reddit_link = link if "reddit.com" in link else f"https://www.reddit.com/r/{subreddit}"
+
+                entry_id = entry.get("id", "") or link or title
+                uri = f"reddit:{hashlib.sha256(entry_id.encode()).hexdigest()[:16]}"
+
+                all_posts.append({
+                    "uri": uri,
+                    "text": text,
+                    "handle": f"r/{subreddit}",
+                    "display_name": f"r/{subreddit} (u/{author})",
+                    "created_at": published,
+                    "bsky_link": reddit_link,
+                    "images": [image_url] if image_url else [],
+                    "has_video": False,
+                    "video_thumbnail": "",
+                    "external_url": external_url,
+                    "external_title": "",
+                    "external_thumb": "",
+                    "is_self_reply": False,
+                    "category": categorize_post(text),
+                    "facets": [],
+                    "like_count": 0,
+                    "repost_count": 0,
+                    "reply_count": 0,
+                    "is_rss": False,
+                    "is_reddit": True,
+                })
+
+            time.sleep(1)
 
     return all_posts
 
