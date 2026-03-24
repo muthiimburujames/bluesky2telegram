@@ -271,3 +271,7 @@ No servers to pay for, no computer to leave on, no accounts to manage beyond Git
 ## License
 
 MIT — do whatever you want with it.
+
+## Links
+
+[![Hypercommit](https://img.shields.io/badge/Hypercommit-DB2475)](https://hypercommit.com/bluesky2telegram)
