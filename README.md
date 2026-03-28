@@ -1,25 +1,44 @@
-# F1 BlueSky → Telegram Bot
+# 🏎 F1 Multi-Source → Telegram Bot
 
-A free, automated bot that monitors Formula 1 accounts on BlueSky and posts their content to your Telegram channel. Runs entirely on GitHub Actions — no server, no always-on computer, no costs.
+A free, automated bot that aggregates Formula 1 content from multiple sources — BlueSky, Reddit, RSS feeds, YouTube, and FIA official documents — and posts it to your Telegram channel. Runs entirely on GitHub Actions with an external scheduler for reliable 5-minute polling. No server, no always-on computer, no costs.
 
 ## What it does
 
-- Checks F1 BlueSky accounts every 5 minutes and posts new content to your Telegram channel
-- Renders rich text with clickable links and @mentions (not flat text)
-- Sends full-quality images, multi-image albums, and video thumbnails
-- Auto-categorizes posts as Breaking, Technical, Transfer, Race, Regulation, or News
-- Detects self-reply threads so corrections and follow-ups aren't missed
-- Skips reposts/boosts to avoid duplicates
-- Detects when multiple accounts share the same article and only posts it once
-- Adds inline buttons (View on BlueSky / Share) to every post
-- Highlights popular posts with high engagement
-- Truncates long posts at sentence boundaries instead of cutting mid-word
-- Recovers automatically from errors by extending the lookback window on the next run
-- Responds to /start and /sources commands when users message the bot directly
-- Runs 100% free on GitHub Actions with a public repository (unlimited minutes)
-- Remembers what it already sent — no duplicates across runs
+- Aggregates F1 content from **5 different source types**: BlueSky accounts, Reddit, RSS feeds, YouTube channels, and FIA official documents
+- Checks for new content every **5 minutes** via an external scheduler (cron-job.org)
+- Renders **rich text** with clickable links and @mentions from BlueSky posts
+- Sends **full-quality images**, multi-image albums, and video thumbnails
+- **Auto-categorizes** posts as Breaking, Technical, Transfer, Race, Regulation, or News
+- Detects **self-reply threads** so corrections and follow-ups aren't missed
+- **Skips reposts/boosts** from BlueSky to avoid duplicates
+- **Duplicate link detection** across all sources — if Reddit and an RSS feed share the same article, it's posted only once
+- Adds **inline buttons** (View on BlueSky / View on Reddit / Read Article / View Document / Share) to every post
+- **Highlights popular** BlueSky posts with high engagement
+- **Smart truncation** at sentence boundaries instead of cutting mid-word
+- **Error recovery** — if a run fails, the next run extends its lookback window to catch up
+- Responds to **/start** and **/sources** commands when users message the bot directly
+- Clean Reddit posts with **no redundant link previews**
+- Runs **100% free** on GitHub Actions (public repo) + cron-job.org
+- Remembers what it already sent — **no duplicates** across runs
 
-## Pre-built F1 accounts monitored
+## Content sources
+
+### BlueSky accounts
+Monitors configurable F1 journalists and media outlets on BlueSky. Includes rich text rendering (clickable links and @mentions), image albums, video thumbnails, repost filtering, and thread detection.
+
+### Reddit r/formula1
+Fetches hot and top posts from r/formula1 (and any other subreddits you configure) via RSS feeds. Reddit is where breaking news, insider leaks, and community discussion surface fastest.
+
+### RSS feeds
+Monitors any RSS/Atom feed — F1 news websites, newsletters, and more. Supports images from media enclosures and thumbnails.
+
+### YouTube channels
+YouTube channels have built-in RSS feeds. When configured, new video uploads appear in your channel with the title, description, and a link to the video.
+
+### FIA official documents
+Scrapes the FIA website for steward decisions, technical directives, penalty notices, and other official documents during race weekends. Auto-categorized as "Regulation."
+
+## Pre-built BlueSky accounts
 
 | Account | Who |
 |---------|-----|
@@ -35,10 +54,11 @@ A free, automated bot that monitors Formula 1 accounts on BlueSky and posts thei
 | `racefans.bsky.social` | RaceFans |
 | `racingnews365.bsky.social` | RacingNews365 |
 
-> **Note:** Some handles above may not exist yet on BlueSky — the bot will simply skip accounts it can't find and continue with the rest. You can edit the list in `bot.py` or add more via GitHub settings (see Step 5).
+> **Note:** Some handles may not exist yet on BlueSky — the bot skips accounts it can't find and continues with the rest. Edit the list in `bot.py` or add more via the `EXTRA_BSKY_ACCOUNTS` variable.
 
 ## How posts look in your channel
 
+### BlueSky post (with image)
 ```
 ┌──────────────────────────────────────┐
 │           [IMAGE / ALBUM]            │
@@ -52,11 +72,38 @@ A free, automated bot that monitors Formula 1 accounts on BlueSky and posts thei
 │ @scarbstech.bsky.social             │
 │ Source: BlueSky                      │
 │                                      │
-│ [View on BlueSky] [Share]            │
+│ [View on BlueSky]  [Share]           │
 └──────────────────────────────────────┘
 ```
 
-Links and @mentions in the post text are clickable. Posts with videos show a thumbnail with a "watch on BlueSky" link. Multi-image posts display as swipeable Telegram albums.
+### Reddit post (clean, no preview card)
+```
+┌──────────────────────────────────────┐
+│                                      │
+│ Verstappen penalty controversy —     │
+│ stewards release full reasoning      │
+│                                      │
+│ @r/formula1                          │
+│ Source: Reddit                       │
+│                                      │
+│ [View on Reddit]  [Share]            │
+└──────────────────────────────────────┘
+```
+
+### FIA document
+```
+┌──────────────────────────────────────┐
+│ [Regulation]                         │
+│                                      │
+│ FIA Document: Doc 42 - Decision -    │
+│ Car 1 - Unsafe release              │
+│                                      │
+│ @FIA                                 │
+│ Source: FIA                          │
+│                                      │
+│ [View Document]  [Share]             │
+└──────────────────────────────────────┘
+```
 
 ## Post categories
 
@@ -70,7 +117,7 @@ The bot automatically tags posts based on content:
 | **[Race]** | "wins grand prix", "podium", "race result", "chequered flag" |
 | **[Regulation]** | "FIA", "regulation", "penalty", "stewards", "cost cap" |
 
-General news posts have no tag. Posts with 50+ likes also get a **[Popular]** label.
+General news posts have no tag. BlueSky posts with 50+ likes also get a **[Popular]** label.
 
 ---
 
@@ -80,43 +127,39 @@ General news posts have no tag. Posts with 50+ likes also get a **[Popular]** la
 
 1. Open **Telegram** and search for **@BotFather** (look for the blue checkmark)
 2. Send `/start`, then send `/newbot`
-3. Choose a display name (e.g., `F1 BlueSky News`)
-4. Choose a username ending in `bot` (e.g., `F1BlueSkyNews_bot`)
+3. Choose a display name (e.g., `F1 News`)
+4. Choose a username ending in `bot` (e.g., `F1MultiNews_bot`)
 5. BotFather replies with a **token** like `123456789:ABCdef...` — **copy and save it!**
-6. Optionally, while in BotFather: send `/mybots` → select your bot → **Edit Bot** → **Edit Botpic** → send an F1-themed image for the bot's profile picture
+6. Optionally: send `/mybots` → select your bot → **Edit Bot** → **Edit Botpic** → send an F1-themed image
 
 ### Step 2: Add the bot to your Telegram Channel
 
-**Do this from Telegram Desktop or web.telegram.org** (mobile can be unreliable for this step):
+**Do this from Telegram Desktop or web.telegram.org** (mobile can be unreliable):
 
-1. Open your Telegram channel
-2. Tap the channel name → **Administrators** → **Add Administrator**
-3. Search for your bot's **username** (the `@something_bot` name, not the display name)
-4. **Tap on the bot** when it appears in search results
-5. Grant it **"Post Messages"** permission → **Save**
-6. Go back to the Administrators list and confirm your bot is listed there
-
-> **Important:** Simply searching for the bot is not enough — you must tap it, grant permission, and save.
+1. Open your channel → tap the channel name → **Administrators** → **Add Administrator**
+2. Search for your bot's **username** (the `@something_bot` name)
+3. **Tap the bot**, grant **"Post Messages"** permission → **Save**
+4. Verify the bot appears in the Administrators list
 
 ### Step 3: Find your Channel ID
 
-- **Public channel:** Your ID is `@YourChannelName` (e.g., `@MyF1News`)
-- **Private channel:** Forward any message from your channel to **@MyChatInfoBot** in Telegram — it replies with the numeric ID (starts with `-100...`)
+- **Public channel:** Your ID is `@YourChannelName`
+- **Private channel:** Forward any message from your channel to **@MyChatInfoBot** — it replies with the numeric ID
 
-### Step 4: Set up the GitHub repository
+### Step 4: Verify the connection
 
-1. **Create a GitHub account** at [github.com](https://github.com) if you don't have one (free)
-2. Click the green **"New"** button to create a new repository
-3. Name it whatever you like (e.g., `f1-bluesky-telegram-bot`)
-4. Set it to **Public** (required for unlimited free GitHub Actions minutes)
-5. Check **"Add a README file"** and click **Create repository**
-6. **Create each file directly on GitHub** (easiest method):
-   - Click **"Add file"** → **"Create new file"**
-   - Type the filename in the box (for nested folders, type the path with slashes, e.g., `.github/workflows/bluesky_monitor.yml` — GitHub creates the folders automatically)
-   - Paste the file contents → click **"Commit changes"**
-   - Repeat for all files
+Open this URL in your browser (replace the placeholders):
+```
+https://api.telegram.org/bot<YOUR_BOT_TOKEN>/sendMessage?chat_id=<YOUR_CHANNEL_ID>&text=Test
+```
+If you see `"ok": true` and "Test" appears in your channel, everything is connected.
 
-   The folder structure should look like this:
+### Step 5: Set up the GitHub repository
+
+1. **Create a GitHub account** at [github.com](https://github.com) if you don't have one
+2. Create a **new public repository** (public = unlimited free GitHub Actions minutes)
+3. **Create each file directly on GitHub**: click **"Add file"** → **"Create new file"** → type the path (e.g., `.github/workflows/bluesky_monitor.yml`) → paste contents → commit
+4. The folder structure should look like this:
    ```
    your-repo/
    ├── .github/
@@ -130,88 +173,127 @@ General news posts have no tag. Posts with 50+ likes also get a **[Popular]** la
    └── README.md
    ```
 
-> **Tip:** Files starting with `.` (like `.github`) are hidden on your computer. Creating them directly on GitHub avoids this issue entirely.
+### Step 6: Add your secrets and variables
 
-### Step 5: Add your secrets
+Go to your repo → **Settings** → **Secrets and variables** → **Actions**.
 
-Your Telegram credentials need to be stored securely as GitHub Secrets:
+**Secrets** (click "New repository secret"):
 
-1. Go to your repository on GitHub
-2. Click **Settings** (tab at the top)
-3. In the left sidebar, click **Secrets and variables** → **Actions**
-4. Click **"New repository secret"** and add these two secrets:
+| Name | Value |
+|------|-------|
+| `TELEGRAM_BOT_TOKEN` | Your bot token from Step 1 |
+| `TELEGRAM_CHANNEL_ID` | Your channel ID from Step 3 |
 
-   | Name | Value |
-   |------|-------|
-   | `TELEGRAM_BOT_TOKEN` | Your bot token from Step 1 (e.g., `123456789:ABCdef...`) |
-   | `TELEGRAM_CHANNEL_ID` | Your channel ID from Step 3 (e.g., `@MyF1News` or `-1001234567890`) |
+**Variables** (click the "Variables" tab → "New repository variable"):
 
-5. (Optional) Click the **"Variables"** tab and add any of these to customize:
+| Name | Default | What it does |
+|------|---------|-------------|
+| `LOOKBACK_HOURS` | `2` | How many hours back to check for posts |
+| `MAX_POSTS_PER_RUN` | `10` | Max posts sent per cycle |
+| `POPULAR_THRESHOLD` | `50` | Minimum likes for BlueSky [Popular] tag |
+| `EXTRA_BSKY_ACCOUNTS` | *(empty)* | Extra BlueSky handles, comma-separated |
+| `RSS_FEEDS` | *(empty)* | RSS feed URLs, comma-separated (see below) |
+| `REDDIT_SUBREDDITS` | `formula1` | Subreddits to monitor, comma-separated |
+| `REDDIT_MIN_SCORE` | `100` | Min upvotes (note: only works if Reddit serves score data) |
+| `FIA_DOCUMENTS` | `true` | Set to `false` to disable FIA document monitoring |
 
-   | Name | Default | What it does |
-   |------|---------|-------------|
-   | `LOOKBACK_HOURS` | `2` | How many hours back to check for posts |
-   | `MAX_POSTS_PER_RUN` | `10` | Max posts sent per 5-minute cycle |
-   | `POPULAR_THRESHOLD` | `50` | Minimum likes for a post to get the [Popular] tag |
-   | `EXTRA_BSKY_ACCOUNTS` | *(empty)* | Extra BlueSky handles, comma-separated |
+> **Security note:** GitHub Secrets are encrypted and never visible in logs or to anyone viewing the repo — even on a public repository.
 
-> **Security note:** GitHub Secrets are encrypted and never visible in logs, code, or to anyone viewing the repo — even on a public repository. This is how thousands of open-source bots operate safely.
+### Step 7: Set up the external scheduler (for reliable 5-min polling)
 
-### Step 6: Verify the bot is connected
+GitHub Actions' built-in cron is unreliable for intervals under 15 minutes. We use **cron-job.org** (free) to trigger the workflow reliably.
 
-Before enabling automation, test the connection. Open this URL in your browser (replace the placeholders):
+1. Create a **GitHub Personal Access Token**: go to [github.com/settings/tokens](https://github.com/settings/tokens) → **"Generate new token"** → **Fine-grained** → select your repo → set **Actions** permission to **Read and write** → generate and copy the token
+2. Sign up at [cron-job.org](https://cron-job.org) (free)
+3. Create a new cronjob with these settings:
 
-```
-https://api.telegram.org/bot<YOUR_BOT_TOKEN>/sendMessage?chat_id=<YOUR_CHANNEL_ID>&text=Test
-```
+| Field | Value |
+|-------|-------|
+| **Title** | F1 Bot Trigger |
+| **URL** | `https://api.github.com/repos/YOUR_USERNAME/YOUR_REPO/actions/workflows/bluesky_monitor.yml/dispatches` |
+| **Schedule** | Every 5 minutes |
+| **Request method** | POST |
 
-If you see `"ok": true` and "Test" appears in your channel, everything is connected.
+4. Add these **custom headers**:
 
-### Step 7: Enable GitHub Actions
+| Header | Value |
+|--------|-------|
+| `Authorization` | `Bearer github_pat_YOUR_TOKEN_HERE` |
+| `Accept` | `application/vnd.github+json` |
+| `Content-Type` | `application/json` |
+
+5. Set the **request body** to: `{"ref":"main"}`
+6. Save and enable
+
+The GitHub workflow also has a 30-minute backup cron in case cron-job.org goes down.
+
+> **Note:** Your GitHub token has an expiration date. Set a calendar reminder to renew it before it expires.
+
+### Step 8: Enable GitHub Actions
 
 1. Go to the **Actions** tab in your repository
-2. You should see the **"F1 BlueSky to Telegram"** workflow
-3. If GitHub asks you to enable workflows, click the green button
-4. To test immediately: click the workflow name → **"Run workflow"** → **"Run workflow"**
-5. Watch the run — click on it to see live logs
+2. Enable workflows if prompted
+3. To test immediately: click the workflow → **"Run workflow"** → **"Run workflow"**
 
-The bot will now automatically run every 5 minutes, check all configured BlueSky accounts, and post new F1 content to your Telegram channel.
+### 🎉 That's it!
+
+The bot will now automatically check all sources every 5 minutes and post new F1 content to your Telegram channel.
 
 ---
 
-## Customizing the bot
+## Adding content sources
 
-### Adding or removing BlueSky accounts
+### Adding RSS feeds
 
-**Easy way (no file editing):** Go to Settings → Secrets and variables → Actions → Variables tab. Add or edit `EXTRA_BSKY_ACCOUNTS` with comma-separated handles:
+Add feed URLs to the `RSS_FEEDS` variable (comma-separated). Good F1 feeds:
+
+```
+https://www.motorsport.com/rss/f1/news/,https://www.autosport.com/rss/f1/news/,https://www.planetf1.com/ps-rss,https://www.the-race.com/category/formula-1/feed/,https://www.racefans.net/feed/,https://feeds.bbci.co.uk/sport/formula1/rss.xml,https://racingnews365.com/feed/news.xml
+```
+
+### Adding YouTube channels
+
+YouTube channels have built-in RSS feeds. Find the channel ID (from the channel URL or About page), then add to `RSS_FEEDS`:
+
+```
+https://www.youtube.com/feeds/videos.xml?channel_id=CHANNEL_ID_HERE
+```
+
+Useful F1 channel IDs:
+- **Chain Bear**: `UCB_qr75-ydFVKSF9s5xFvHw`
+- **Peter Windsor**: `UC_ULpnIIQBPSx55F5GwjRhA`
+- **Josh Revell**: `UCPwy2q7BNjdLYu1kM_OEJVw`
+
+### Adding Reddit subreddits
+
+Change the `REDDIT_SUBREDDITS` variable (comma-separated):
+```
+formula1,F1Technical,FormulaFeeders
+```
+
+### Adding BlueSky accounts
+
+Change the `EXTRA_BSKY_ACCOUNTS` variable (comma-separated):
 ```
 user1.bsky.social,user2.bsky.social
 ```
 
-**Direct way:** Edit `bot.py` on GitHub — click the file → pencil icon → edit the `F1_ACCOUNTS` list → commit.
+Or edit `bot.py` directly on GitHub to modify the `F1_ACCOUNTS` list.
 
-### Changing the refresh rate
+### Disabling FIA documents
 
-Edit `.github/workflows/bluesky_monitor.yml` on GitHub. Find the `cron` line and change it:
+Set the `FIA_DOCUMENTS` variable to `false`.
 
-- Every 5 minutes: `'*/5 * * * *'` (default — requires public repo)
-- Every 10 minutes: `'*/10 * * * *'`
-- Every 30 minutes: `'*/30 * * * *'` (works fine on private repos)
+---
 
-> **Free tier note:** Public repos get unlimited GitHub Actions minutes. Private repos get 2,000 minutes/month. At 5-minute intervals on a private repo, you would exceed the limit — keep it public or use a longer interval.
+## Bot commands
 
-### Adjusting the Popular post threshold
+When users message your bot directly, it responds to:
 
-By default, posts with 50+ likes get a **[Popular]** label. Change this by adding `POPULAR_THRESHOLD` as a variable in Settings → Secrets and variables → Actions → Variables with your preferred number.
+- `/start` — Welcome message explaining how the bot works and what categories mean
+- `/sources` — Lists all monitored BlueSky accounts with links
 
-### Bot commands
-
-When users message your bot directly, it responds to two commands:
-
-- `/start` — Shows a welcome message explaining how the bot works and what the categories mean
-- `/sources` — Lists all monitored BlueSky accounts with links to their profiles
-
-These commands are set up automatically by the bot. The bot's description and short bio in Telegram are also configured automatically on each run.
+The bot's description and profile are configured automatically.
 
 ---
 
@@ -219,52 +301,59 @@ These commands are set up automatically by the bot. The bot's description and sh
 
 ### The bot didn't post anything
 
-1. Check the **Actions** tab → click the latest run → expand **"Run the bot"** → read the logs
-2. Verify your secrets are set correctly (Settings → Secrets — note you can't view them after saving, only replace)
-3. Make sure the bot is an **administrator** in your Telegram channel with "Post Messages" permission
-4. Run the browser test from Step 6 to verify the connection
+1. Check **Actions** tab → latest run → expand **"Run the bot"** → read the logs
+2. Verify secrets are set correctly (Settings → Secrets)
+3. Make sure the bot is an **administrator** in your channel with "Post Messages" permission
+4. Run the browser test from Step 4
 
 ### "Forbidden: bot is not a member of the channel chat"
 
-The bot isn't properly added as an admin. Re-do Step 2 from **Telegram Desktop or web.telegram.org** — mobile sometimes doesn't save permissions properly. After adding, verify the bot appears in the Administrators list.
+Re-do Step 2 from **Telegram Desktop or web.telegram.org**. After adding, verify the bot appears in the Administrators list.
 
 ### "Could not resolve handle"
 
-That BlueSky account doesn't exist or changed its handle. The bot skips it and continues with the others. Edit the account list to fix or remove it.
+That BlueSky account doesn't exist or changed its handle. The bot skips it and continues.
 
-### The scheduled workflow isn't triggering automatically
+### Reddit returns 403
 
-This is a known GitHub Actions issue. Push any small commit to the repo (even editing the README) to resync the schedule. If it persists, manually trigger one run from the Actions tab — this usually kickstarts automatic scheduling.
+Reddit blocks JSON API requests from cloud servers. The bot uses RSS feeds as a workaround, which are more permissive. If RSS also fails, Reddit may be temporarily blocking the GitHub Actions IP range — it will usually resolve on the next run.
 
-> **Note:** GitHub Actions does not guarantee exact cron timing. Runs scheduled every 5 minutes may occasionally be delayed by 5-15 minutes during high-load periods. This is normal and doesn't cause missed posts — the lookback window covers the gap.
+### The scheduled workflow isn't triggering
+
+If using cron-job.org: check the job's execution history for HTTP 204 (success) or errors. If using GitHub's backup cron: push a small commit to resync the schedule.
 
 ### Duplicate posts appearing
 
-The bot has three layers of deduplication (post URI tracking, repost/boost skipping, and duplicate link detection). If duplicates still appear, delete `state/sent_posts.json` on GitHub — it will be recreated fresh on the next run.
+The bot has three deduplication layers (post ID tracking, repost skipping, duplicate link detection). If duplicates still appear, delete `state/sent_posts.json` on GitHub — it will be recreated.
+
+### Git push errors in the logs
+
+If two runs overlap, the second may fail to push state. The workflow handles this gracefully with `git pull --rebase`. The state re-syncs on the next run — no posts are lost.
 
 ### I want to stop the bot
 
-Go to the **Actions** tab → click the workflow → click the **"..."** menu → **"Disable workflow"**. Re-enable anytime.
+Go to **Actions** tab → click the workflow → **"..."** menu → **"Disable workflow"**. Also disable the cron-job.org job. Re-enable anytime.
 
 ---
 
 ## How it works
 
-Every 5 minutes, GitHub's servers run your bot for free. The bot:
+Every 5 minutes, cron-job.org triggers your GitHub Actions workflow. The bot:
 
-1. Reads each BlueSky account's recent posts using BlueSky's free public API (no authentication needed)
-2. Filters for posts from the last 2 hours
-3. Skips reposts/boosts and detects when multiple accounts share the same article
-4. Converts BlueSky's rich text annotations into clickable Telegram HTML (links and @mentions)
-5. Auto-categorizes each post based on keyword matching
-6. Checks which posts it already sent (tracked in `state/sent_posts.json`)
-7. Sends new posts to Telegram with images, albums, video thumbnails, and inline buttons
-8. Saves the updated state back to the repository
-9. Responds to any pending /start or /sources commands from users
+1. Fetches recent posts from all configured BlueSky accounts via the public API
+2. Fetches hot/top posts from Reddit subreddits via RSS feeds
+3. Checks all configured RSS feeds (including YouTube channels)
+4. Scrapes the FIA documents page for new official documents
+5. Skips reposts, deduplicates by post ID and by shared URLs across all sources
+6. Converts BlueSky rich text annotations into clickable Telegram HTML
+7. Auto-categorizes each post based on keyword matching
+8. Sends new posts to Telegram with images, albums, video thumbnails, and inline buttons
+9. Saves state back to the repository (which posts were sent, which links were seen)
+10. Responds to any pending /start or /sources commands
 
-If a run fails due to a network error or API timeout, the next run automatically extends its lookback window to catch up on anything that was missed.
+If a run fails, the next run doubles its lookback window to catch up automatically.
 
-No servers to pay for, no computer to leave on, no accounts to manage beyond GitHub and Telegram.
+No servers to pay for, no computer to leave on. Total cost: zero.
 
 ---
 
