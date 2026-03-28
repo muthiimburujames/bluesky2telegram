@@ -54,10 +54,12 @@ POPULAR_THRESHOLD = int(os.environ.get("POPULAR_THRESHOLD", "50"))
 F1_ACCOUNTS = [
   "f1docs.bsky.social",
   "chrismedlandf1.bsky.social",
+  "somersf1.co.uk",
   "jeppe.bsky.social",
   "f1subreddit.bsky.social",
   "scarbstech.bsky.social",
   "thomasmaheronf1.bsky.social",
+  "andrewbensonf1.bsky.social",
   "fdataanalysis.bsky.social",
   "f1tv.bsky.social",
 ]
@@ -563,7 +565,8 @@ def send_telegram_album(caption: str, photo_urls: list[str]) -> bool:
     return False
 
 
-def send_telegram_message(text: str, photo_url: str = "", reply_markup: dict = None) -> bool:
+def send_telegram_message(text: str, photo_url: str = "", reply_markup: dict = None,
+                         disable_preview: bool = False) -> bool:
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHANNEL_ID:
         return False
     base_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
@@ -576,7 +579,8 @@ def send_telegram_message(text: str, photo_url: str = "", reply_markup: dict = N
             resp = requests.post(f"{base_url}/sendPhoto", json=payload, timeout=30)
         else:
             payload = {"chat_id": TELEGRAM_CHANNEL_ID, "text": text,
-                       "parse_mode": "HTML", "disable_web_page_preview": False}
+                       "parse_mode": "HTML",
+                       "disable_web_page_preview": disable_preview}
             if reply_markup:
                 payload["reply_markup"] = json.dumps(reply_markup)
             resp = requests.post(f"{base_url}/sendMessage", json=payload, timeout=30)
@@ -1214,6 +1218,9 @@ def main():
             buttons = build_inline_buttons(post)
             success = False
 
+            # Disable link previews for Reddit and FIA posts (they look repetitive)
+            no_preview = post.get("is_reddit") or post.get("is_fia")
+
             if len(photos) > 1:
                 msg = format_telegram_message(post, as_caption=True)
                 print(f"     📸 Album with {len(photos)} images...")
@@ -1233,7 +1240,7 @@ def main():
 
             elif post.get("has_video"):
                 msg = format_telegram_message(post, as_caption=False)
-                success = send_telegram_message(msg, reply_markup=buttons)
+                success = send_telegram_message(msg, reply_markup=buttons, disable_preview=no_preview)
 
             elif post["external_thumb"]:
                 msg = format_telegram_message(post, as_caption=True)
@@ -1241,12 +1248,12 @@ def main():
 
             else:
                 msg = format_telegram_message(post, as_caption=False)
-                success = send_telegram_message(msg, reply_markup=buttons)
+                success = send_telegram_message(msg, reply_markup=buttons, disable_preview=no_preview)
 
             if not success and (photos or post.get("video_thumbnail") or post["external_thumb"]):
                 print("     ⚠ Retrying without images...")
                 msg = format_telegram_message(post, as_caption=False)
-                success = send_telegram_message(msg, reply_markup=buttons)
+                success = send_telegram_message(msg, reply_markup=buttons, disable_preview=no_preview)
 
             if success:
                 sent_count += 1
