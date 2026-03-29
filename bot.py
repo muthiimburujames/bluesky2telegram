@@ -939,10 +939,15 @@ def collect_posts_from_reddit() -> list[dict]:
                     author_detail = entry.get("author_detail", {})
                     author = author_detail.get("name", "unknown").replace("/u/", "")
 
-                # Extract content/summary — Reddit RSS puts HTML content in the summary
-                summary_html = entry.get("summary", "")
+                # Extract content — Reddit Atom feeds use 'content', RSS uses 'summary'
+                content_html = ""
+                if entry.get("content"):
+                    content_html = entry["content"][0].get("value", "")
+                if not content_html:
+                    content_html = entry.get("summary", "")
+
                 # Strip HTML tags for clean text
-                clean_summary = re.sub(r'<[^>]+>', '', summary_html).strip()
+                clean_summary = re.sub(r'<[^>]+>', '', content_html).strip()
                 # Remove the "[link]" and "[comments]" footer Reddit adds
                 clean_summary = re.sub(r'\[link\].*$', '', clean_summary, flags=re.DOTALL).strip()
                 clean_summary = re.sub(r'submitted by\s+\S+.*$', '', clean_summary, flags=re.DOTALL).strip()
@@ -952,11 +957,42 @@ def collect_posts_from_reddit() -> list[dict]:
                     truncated = smart_truncate(clean_summary, 300)
                     text = f"{title}\n\n{truncated}"
 
-                # Try to extract image from content
+                # Extract image — check multiple sources in order of quality
                 image_url = ""
-                img_match = re.search(r'<img[^>]*src="([^"]+)"', summary_html)
-                if img_match:
-                    image_url = img_match.group(1)
+
+                # 1. Full-res image from i.redd.it link in content
+                full_img = re.search(r'href="(https://i\.redd\.it/[^"]+)"', content_html)
+                if full_img:
+                    image_url = full_img.group(1).replace("&amp;", "&")
+
+                # 2. Preview image from preview.redd.it in content
+                if not image_url:
+                    preview_img = re.search(r'src="(https://preview\.redd\.it/[^"]+)"', content_html)
+                    if preview_img:
+                        image_url = preview_img.group(1).replace("&amp;", "&")
+
+                # 3. Any <img> tag in content
+                if not image_url:
+                    img_match = re.search(r'<img[^>]*src="([^"]+)"', content_html)
+                    if img_match:
+                        img_candidate = img_match.group(1).replace("&amp;", "&")
+                        # Skip tiny Reddit icons and tracking pixels
+                        if "icon" not in img_candidate and "pixel" not in img_candidate:
+                            image_url = img_candidate
+
+                # 4. media:thumbnail from RSS (feedparser parses this automatically)
+                if not image_url:
+                    media_thumbs = entry.get("media_thumbnail", [])
+                    if media_thumbs:
+                        image_url = media_thumbs[0].get("url", "")
+
+                # 5. media:content
+                if not image_url:
+                    media_content = entry.get("media_content", [])
+                    for mc in media_content:
+                        if mc.get("medium") == "image" or "image" in mc.get("type", ""):
+                            image_url = mc.get("url", "")
+                            break
 
                 # Check for external URL (link posts)
                 external_url = ""
