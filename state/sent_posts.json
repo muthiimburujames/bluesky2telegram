@@ -1,6 +1,5 @@
 {
   "sent_ids": [
-    "ffd6aee1b6a8fd89",
     "8d393416d61e1e41",
     "aefdc192b5fd2423",
     "1d36fc62b760b288",
@@ -499,9 +498,10 @@
     "ebd9d5f698f5e4d7",
     "e1d225e6e80d5666",
     "c05a610f7fd95fa3",
-    "5a83b6b69d067e22"
+    "5a83b6b69d067e22",
+    "91a427fcaadbc8c3"
   ],
-  "last_run": "2026-06-05T15:20:39.543811+00:00",
+  "last_run": "2026-06-05T15:25:39.348577+00:00",
   "last_update_id": 484266881,
   "sent_links": [
     "8fdc5cab569dc44c",
