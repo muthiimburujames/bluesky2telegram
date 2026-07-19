@@ -1,10 +1,5 @@
 {
   "sent_ids": [
-    "c4769c30ac2f2254",
-    "8d62dcf514181b6b",
-    "4a34c307d90c655c",
-    "4ba9d1ff54bacb3f",
-    "666db1022345bf77",
     "c816ed284e39415e",
     "89e39eb6d510621c",
     "feadadf0bd253432",
@@ -499,12 +494,16 @@
     "7dff1d17e93c2069",
     "88cfadd71e96376b",
     "dce5c903a76edd20",
-    "8fb6e4e2f2279654"
+    "8fb6e4e2f2279654",
+    "9e814eca0d129e0e",
+    "16d9da1e7277e950",
+    "239fc805e0bc1284",
+    "79955fd65258a226",
+    "0cc6ac26a99c508d"
   ],
-  "last_run": "2026-07-19T04:47:34.443342+00:00",
+  "last_run": "2026-07-19T07:26:44.350047+00:00",
   "last_update_id": 484266889,
   "sent_links": [
-    "f47bbf35dea56cc9",
     "fea65de7b82996c1",
     "f6623831d1e76fc8",
     "bd5cee71f3254d30",
@@ -703,7 +702,8 @@
     "a217db2b6b1eaad8",
     "2620fe771fcfe9e4",
     "d31f6b4c949f0c19",
-    "1cd800d376312cbd"
+    "1cd800d376312cbd",
+    "714d459703425cb0"
   ],
   "last_error": false
 }
