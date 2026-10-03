@@ -1,18 +1,5 @@
 {
   "sent_ids": [
-    "92f305176ff629b8",
-    "127171669ca9ce1b",
-    "7dfb5fab7769de3b",
-    "db7dd45577580347",
-    "a4d065d21d1ea4d5",
-    "cf04d84be02ad2f6",
-    "08a220bf6b1c880d",
-    "9702f3b52ed5df1f",
-    "ad905ce634070850",
-    "6f95d2461e932d31",
-    "fb0154df7d8c242c",
-    "412504df20483373",
-    "0fffe7fc51401ecc",
     "0dd4e05aed2aec0c",
     "e70d9d049c679a6f",
     "1390478b535c8c35",
@@ -499,12 +486,24 @@
     "f2c65121b9b1cb24",
     "c7d7e3910946fac4",
     "d2a7a1865ad82757",
-    "7885f90fe3c3674e"
+    "7885f90fe3c3674e",
+    "368536e65e0b2029",
+    "ced9d9a52b32dc36",
+    "0b2a0e828bfee301",
+    "382d8713f62b862f",
+    "dba5865cf991616f",
+    "c108e2cb9e1472e9",
+    "b8dc7cd8eea495ea",
+    "eb3b0cafc9540168",
+    "decdfdbe7e302bee",
+    "7f275dfaf1c081c8",
+    "ed3845acde983c52",
+    "c02940bed3166691",
+    "1bea2a391750e3af"
   ],
-  "last_run": "2026-10-03T00:37:15.757785+00:00",
+  "last_run": "2026-10-03T06:05:37.333968+00:00",
   "last_update_id": 484266911,
   "sent_links": [
-    "270575e0eba507ac",
     "8c00ebcddf574617",
     "b08355ea252868ba",
     "4a402fd0072e8cdd",
@@ -703,7 +702,8 @@
     "788edc3f4e2a2e6e",
     "92e4d478e53e3cd0",
     "9988762501016cc5",
-    "e3bdb0e5791ab0b0"
+    "e3bdb0e5791ab0b0",
+    "e646f59d30d98dc0"
   ],
   "last_error": false
 }
